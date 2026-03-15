@@ -4,9 +4,11 @@ extern crate alloc;
 
 pub mod passive_lp_matcher;
 pub mod vamm;
+pub mod prop_amm;
 
 pub use passive_lp_matcher::*;
 pub use vamm::*;
+pub use prop_amm::integration::PropAmmUpdateParams;
 
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -212,6 +214,7 @@ pub fn process_instruction(
     match instruction_data[0] {
         MATCHER_CALL_TAG => process_matcher_call(program_id, accounts, instruction_data),
         MATCHER_INIT_VAMM_TAG => vamm::process_init(program_id, accounts, instruction_data),
+        PROP_AMM_UPDATE_TAG => prop_amm::integration::process_prop_amm_update(program_id, accounts, instruction_data),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
