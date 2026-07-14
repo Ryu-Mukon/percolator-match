@@ -143,7 +143,9 @@ pub fn process_prop_amm_update(
         req_id: 0,
         lp_account_id: 0,
         oracle_price_e6: ctx.impact_k_bps as u64,
-        reserved: 0,
+        // Admin params-update confirmation, not a trade return — the engine never
+        // validates this one, so there is no asset to echo.
+        asset_index: 0,
     };
     ret.write_to(&mut data[..MATCHER_RETURN_LEN])?;
 

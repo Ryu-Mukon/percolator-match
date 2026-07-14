@@ -50,7 +50,7 @@ pub const MATCHER_INIT_VAMM_TAG: u8 = 2;
 /// Offset  Field               Type     Size
 /// 0       tag                 u8       1      Always 0
 /// 1-9     req_id              u64      8
-/// 9-11    lp_idx              u16      2
+/// 9-11    asset_index         u16      2      (ABI v3: the leg's asset)
 /// 11-19   lp_account_id       u64      8
 /// 19-27   oracle_price_e6     u64      8
 /// 27-43   req_size            i128     16
@@ -64,7 +64,7 @@ pub const MATCHER_CALL_LEN: usize = 67;
 pub const FLAG_VALID: u32 = 1;
 pub const FLAG_PARTIAL_OK: u32 = 2;
 pub const FLAG_REJECTED: u32 = 4;
-pub const MATCHER_ABI_VERSION: u32 = 1;
+pub const MATCHER_ABI_VERSION: u32 = 3;
 
 /// Matcher return structure written to context account at offset 0
 #[repr(C)]
@@ -77,7 +77,11 @@ pub struct MatcherReturn {
     pub req_id: u64,
     pub lp_account_id: u64,
     pub oracle_price_e6: u64,
-    pub reserved: u64,
+    /// ABI v3: MUST echo the call's asset_index. The engine validates this and
+    /// rejects the TradeCpi with InvalidAccountData on mismatch. Writing 0 here
+    /// (the old `reserved`) only ever worked for asset 0 — every other asset
+    /// silently failed to trade.
+    pub asset_index: u64,
 }
 
 impl MatcherReturn {
@@ -93,11 +97,11 @@ impl MatcherReturn {
         data[32..40].copy_from_slice(&self.req_id.to_le_bytes());
         data[40..48].copy_from_slice(&self.lp_account_id.to_le_bytes());
         data[48..56].copy_from_slice(&self.oracle_price_e6.to_le_bytes());
-        data[56..64].copy_from_slice(&self.reserved.to_le_bytes());
+        data[56..64].copy_from_slice(&self.asset_index.to_le_bytes());
         Ok(())
     }
 
-    pub fn rejected(req_id: u64, lp_account_id: u64, oracle_price_e6: u64) -> Self {
+    pub fn rejected(req_id: u64, lp_account_id: u64, oracle_price_e6: u64, asset_index: u64) -> Self {
         Self {
             abi_version: MATCHER_ABI_VERSION,
             flags: FLAG_VALID | FLAG_REJECTED,
@@ -106,7 +110,7 @@ impl MatcherReturn {
             req_id,
             lp_account_id,
             oracle_price_e6,
-            reserved: 0,
+            asset_index,
         }
     }
 
@@ -116,6 +120,7 @@ impl MatcherReturn {
         req_id: u64,
         lp_account_id: u64,
         oracle_price_e6: u64,
+        asset_index: u64,
     ) -> Self {
         Self {
             abi_version: MATCHER_ABI_VERSION,
@@ -125,11 +130,11 @@ impl MatcherReturn {
             req_id,
             lp_account_id,
             oracle_price_e6,
-            reserved: 0,
+            asset_index,
         }
     }
 
-    pub fn zero_fill(req_id: u64, lp_account_id: u64, oracle_price_e6: u64) -> Self {
+    pub fn zero_fill(req_id: u64, lp_account_id: u64, oracle_price_e6: u64, asset_index: u64) -> Self {
         Self {
             abi_version: MATCHER_ABI_VERSION,
             flags: FLAG_VALID | FLAG_PARTIAL_OK,
@@ -138,7 +143,7 @@ impl MatcherReturn {
             req_id,
             lp_account_id,
             oracle_price_e6,
-            reserved: 0,
+            asset_index,
         }
     }
 }
@@ -147,7 +152,10 @@ impl MatcherReturn {
 #[derive(Clone, Copy, Debug)]
 pub struct MatcherCall {
     pub req_id: u64,
-    pub lp_idx: u16,
+    /// ABI v3: the asset this leg trades. MUST be echoed back in the return —
+    /// the engine validates `ret.asset_index == call.asset_index` and fails the
+    /// whole TradeCpi with InvalidAccountData otherwise.
+    pub asset_index: u16,
     pub lp_account_id: u64,
     pub oracle_price_e6: u64,
     pub req_size: i128,
@@ -163,7 +171,7 @@ impl MatcherCall {
         }
 
         let req_id = u64::from_le_bytes(data[1..9].try_into().unwrap());
-        let lp_idx = u16::from_le_bytes(data[9..11].try_into().unwrap());
+        let asset_index = u16::from_le_bytes(data[9..11].try_into().unwrap());
         let lp_account_id = u64::from_le_bytes(data[11..19].try_into().unwrap());
         let oracle_price_e6 = u64::from_le_bytes(data[19..27].try_into().unwrap());
         let req_size = i128::from_le_bytes(data[27..43].try_into().unwrap());
@@ -177,7 +185,7 @@ impl MatcherCall {
 
         Ok(Self {
             req_id,
-            lp_idx,
+            asset_index,
             lp_account_id,
             oracle_price_e6,
             req_size,
